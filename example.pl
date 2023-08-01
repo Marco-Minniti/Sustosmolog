@@ -37,3 +37,5 @@ link(edge42, cloud42, 20).
 %---> BestPlacement = [175, 75, 107, [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), 
 %                                    on(arDriver, light, edge42)]] 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
