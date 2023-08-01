@@ -1,0 +1,76 @@
+Nodes: 8
+Exhaustive:
+ {'time': 0.0015325500000000214, 'cost': 55.75, 'vc': 86.25, 'fails': 1282}
+Greedy:
+ {'time': 0.0007171999999998402, 'cost': 50.3, 'vc': 77.5, 'fails': 1284}
+Nodes: 16
+Exhaustive:
+ {'time': 0.008855749999999319, 'cost': 61.75, 'vc': 85.0, 'fails': 611}
+Greedy:
+ {'time': 0.002048349999999566, 'cost': 63.45, 'vc': 81.25, 'fails': 611}
+Nodes: 32
+Exhaustive:
+ {'time': 0.05319975000000028, 'cost': 58.0, 'vc': 83.75, 'fails': 211}
+Greedy:
+ {'time': 0.006740549999999956, 'cost': 62.8, 'vc': 81.25, 'fails': 211}
+Nodes: 64
+Exhaustive:
+ {'time': 0.35068230000000045, 'cost': 73.9, 'vc': 77.5, 'fails': 76}
+Greedy:
+ {'time': 0.028384050000000372, 'cost': 86.1, 'vc': 72.5, 'fails': 76}
+Nodes: 128
+Exhaustive:
+ {'time': 4.461654249999999, 'cost': 83.9, 'vc': 78.75, 'fails': 27}
+Greedy:
+ {'time': 0.37272784999999475, 'cost': 76.85, 'vc': 70.0, 'fails': 28}
+Nodes: 256
+Exhaustive:
+ {'time': 58.27436894999998, 'cost': 61.15, 'vc': 86.25, 'fails': 6}
+Greedy:
+ {'time': 1.092796499999983, 'cost': 76.4, 'vc': 71.25, 'fails': 7}
+Nodes: 512
+Greedy:
+ {'time': 11.05871479999995, 'cost': 93.6, 'vc': 67.5, 'fails': 0}
+Nodes: 1024
+Greedy:
+ {'time': 27.789899899999956, 'cost': 96.8, 'vc': 75.0, 'fails': 0}
+Nodes: 2048
+Greedy:
+ {'time': 140.42707494999996, 'cost': 102.7, 'vc': 65.0, 'fails': 1}
+
+
+Nodes: 8
+Exhaustive:
+ {'distance': 0.018000000000000006, 'time': 0.0014221999999999735}
+Greedy:
+ {'time': 0.00020710000000002116}
+Nodes: 16
+Exhaustive:
+ {'distance': 0.05566666666666666, 'time': 0.00698325000000013}
+Greedy:
+ {'time': 0.0007466999999999446}
+Nodes: 32
+Exhaustive:
+ {'distance': 0.10304402229552952, 'time': 0.06124105000000028}
+Greedy:
+ {'time': 0.004381649999999837}
+Nodes: 64
+Exhaustive:
+ {'distance': 0.10850000000000001, 'time': 0.5071178999999999}
+Greedy:
+ {'time': 0.004045150000000231}
+Nodes: 128
+Exhaustive:
+ {'distance': 0.1379425041577572, 'time': 5.179741800000002}
+Greedy:
+ {'time': 0.05651694999999979}
+Nodes: 256
+Exhaustive:
+ {'distance': 0.05386099290780143, 'time': 43.320917600000016}
+Greedy:
+ {'time': 0.18477014999999924}
+Nodes: 512
+Exhaustive:
+ {'distance': 0.12214098423952588, 'time': 902.2025519999997}
+Greedy:
+ {'time': 2.2349420999999836}
