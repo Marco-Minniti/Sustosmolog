@@ -21,8 +21,7 @@ placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeCost) :-
 swReqsOK(SW_Reqs, SW_Caps, Cost) :- costIfCapsOK(SW_Reqs, SW_Caps, Cost).
 
 % Checks IoT requirements and returns their cost if they can be satisfied.
-thingReqsOK(T_Reqs, T_Caps, Cost) :- costIfCapsOK
-(T_Reqs, T_Caps, Cost).
+thingReqsOK(T_Reqs, T_Caps, Cost) :- costIfCapsOK(T_Reqs, T_Caps, Cost).
 
 % Checks capabilities and returns their cost if they can be satisfied.
 costIfCapsOK([], _, 0).
