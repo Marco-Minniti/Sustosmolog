@@ -4,6 +4,11 @@
 :- ['example'].
 %:-['infra','app'].
 
+
+:- dynamic deployment/3.
+:- dynamic usedHw/2.
+
+
 %-----------------------------------------------------------------------------------------------
 %USER FORMAT: user(id, plan)
 user(u1, premium).
@@ -41,10 +46,10 @@ processRequests(Rest, NewAcc, Result).
 % Example query: go((0,highest), arApp, adaptive, full, 100, V, C, Best, Time).
 %%
 go(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, VC, C, Best, Time) :-
-statistics(cputime, Start),
-goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement),
-statistics(cputime, Stop), Time is Stop - Start,
-nth0(1,BestPlacement,VC), nth0(2,BestPlacement,C), nth0(3,BestPlacement,Best).
+    statistics(cputime, Start),
+    goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement),
+    statistics(cputime, Stop), Time is Stop - Start,
+    nth0(1,BestPlacement,VC), nth0(2,BestPlacement,C), nth0(3,BestPlacement,Best).
 
 % goForBest returns the "best" full ranked placement according to the given SortType
 %   SortType is a couple (S,highest/lowest) to indicate:
@@ -55,15 +60,19 @@ nth0(1,BestPlacement,VC), nth0(2,BestPlacement,C), nth0(3,BestPlacement,Best).
 %   goForBest(prolog, (2,lowest),  smartHome, dunno, full, 40, Best).
 %   goForBest(clp,    (1,lowest),  smartHome, dunno, full, 40, Best).
 goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement) :-
-findall((Placement, PlacementCost), placement(AppName, AppVersion, MaxCost, Placement, PlacementCost), Placements),
-evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements),
-best(SortType,EvaluatedPlacements,BestPlacement).
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-placement(AppName, AppVersion, MaxCost, Placement, TotCost) :-
-application((AppName, AppVersion), MELs),
-melPlacementOK(MELs, Placement, [], 0, TotCost, MaxCost),
-findall(mel2mel(M1,M2,Latency), mel2mel_in_placement(M1,M2,Latency,Placement), FlowConstraints),
-flowsOK(FlowConstraints, Placement).
+    findall((Placement, PlacementCost), placement(AppName, AppVersion, MaxCost, Placement, PlacementCost), Placements),
+    evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements),
+    best(SortType,EvaluatedPlacements,BestPlacement),
+    
+    hwUsed(BestPlacement, HwUsed), % [all(Node,AllocatedHw),...] % Considero fattibile il placement arrivato fin qui, da questo estraggo i nomi dei servizi, calcolo l'hw COMPLESSIVO, aggiorno la kb.
+    assert(deployment(AppName, BestPlacement, HwUsed)). % --> deployment(fooApp, [on(s1,small,n1), on(s2, large, n24), on(s1, small, n1)], [ all(n1,10), all(n24,8) ]).
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    placement(AppName, AppVersion, MaxCost, Placement, TotCost) :-
+    application((AppName, AppVersion), MELs),
+    melPlacementOK(MELs, Placement, [], 0, TotCost, MaxCost),
+    findall(mel2mel(M1,M2,Latency), mel2mel_in_placement(M1,M2,Latency,Placement), FlowConstraints),
+    flowsOK(FlowConstraints, Placement).
 
 % evalPacements ranks a list of placements
 evalPlacements(_, _, _, [], []).
@@ -127,3 +136,53 @@ PSorted = HeuPSorted,
 
 myPrint([]).
 myPrint([X|Xs]):-write_ln(X),myPrint(Xs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Query: hwUsed([175, 75, 107, [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)]], HwUsed).
+% Out: HwUsed = [all(edge42, 1), all(cloud42, 88)] .
+hwUsed(P, HwUsed) :-
+    extractSublist(P, _, Sublist), 
+    getNodes(Sublist, [], Nodes),   
+    placementHwUsed(Nodes, Sublist, HwUsed), 
+    assertUsedHw(HwUsed).
+
+% Query: assertUsedHw([all(edge42, 1), all(cloud42, 88)]).
+assertUsedHw([]).
+assertUsedHw([all(N,UsedHwAtN)|Rest]) :- 
+    \+ usedHw(N,_),
+    assertUsedHw(Rest),
+    assert(usedHw(N,UsedHwAtN)).
+assertUsedHw([all(N,UsedHwAtN)|Rest]) :- 
+    usedHw(N,OldHw), 
+    assertUsedHw(Rest),
+    NewHw is OldHw + UsedHwAtN, 
+    retract(usedHw(N,OldHw)), assert(usedHw(N,NewHw)).
+
+
+% Query: placementHwUsed([edge42, cloud42], [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)], HwUsed).
+% Out: HwUsed = [all(edge42, 1), all(cloud42, 88)].
+placementHwUsed([],_,[]).         
+placementHwUsed([N|Rest], Sublist, [all(N,UsedHwAtN)|HwUsed]) :- 
+    placementHwUsed(Rest, Sublist, HwUsed),
+    findall(HwReqs, (member(on(S,V,N), Sublist), mel((S,V),_,HwReqs,_)), SingleUsedHWs), % Voglio trovare tutti gli elementi on(S, V, N) in Sublist, preso un elemento es on(usersData, full, cloud42), mi ricavo il relativo mel((S,V),_,HwReqs,_) ovvero mel((usersData,full),_,64,_), da cui estraggo HwReqs=64 e lo metto in una lista SingleUsedHWs
+    sumlist(SingleUsedHWs, UsedHwAtN). 
+
+% Query: extractSublist([175, 75, 107, [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)]], _, Sublists).
+% Out: Sublists = [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)]
+extractSublist([], Sublists, Sublists).
+extractSublist([Item|Rest], _, Sublist) :-
+    extractSublist(Rest, Item, Sublist).
+
+% Query: getNodes([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)], [], Nodes).
+% Out: Nodes = [edge42, cloud42]
+getNodes([], Nodes, Nodes).
+getNodes([on(_,_,N)|Rest], Acc, Nodes) :-
+    member(N, Acc),
+    getNodes(Rest, Acc, Nodes).
+getNodes([on(_,_,N)|Rest], Acc, Nodes) :-
+    \+ member(N, Acc),
+    NewList = [N | Acc],
+    getNodes(Rest, NewList, Nodes).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

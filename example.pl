@@ -1,6 +1,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%
 % Example Application %
 %%%%%%%%%%%%%%%%%%%%%%%
+%  mel((name, Version), SW_Reqs, HW_Reqs, Thing_Reqs), 
 mel((usersData,full), [docker], 64, []).
 
 mel((videoStorage,full), [docker], 16, []).
@@ -24,6 +25,7 @@ application((arApp, adaptive), [(usersData,full), (videoStorage,_), (movementPro
 % Example Infrastructure %
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% node(N, SW_Caps, HW_Caps, Thing_Caps), -->  node(nome, (capacitàSW, costoSingolaUnitàSW), (capacitàHW, costoSingolaUnitàHW), (capacitàT, costoSingolaUnitàT)), 
 node(edge42, [(gcc,0),(caffe,4)], (6, 3), [(phone,1),(lightSensor,1)]).
 node(cloud42, [(docker, 5)], (100, 1), []).
 

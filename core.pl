@@ -1,3 +1,7 @@
+
+:- dynamic usedHw/2.
+
+
 % Places all MELs specified in the application and prunes the search
 % when MaxCost is exceeded.
 melPlacementOK([], [], _, PlacementCost, PlacementCost, _).
@@ -33,8 +37,13 @@ costIfCapsOK([Cap| CWs], Caps, TotalCost) :-
 % Checks hardware requirements and returns their cost if they can be satisfied.
 % called with    hwReqsOK(HW_Reqs, HW_Caps, N, AllocatedHW, NewAllocatedHW, NodeHwCost),
 hwReqsOK(HW_Reqs, (HW_Cap, Cost), N, AllocatedHW, NewAllocatedHW, NodeHwCost) :-
-    HW_Reqs =< HW_Cap,
-    hwReqsOK2(HW_Reqs, (HW_Cap, Cost), N, AllocatedHW, NewAllocatedHW, NodeHwCost).
+
+    ( usedHw(N, UsedHw); \+ usedHw(N,_), UsedHw = 0 ),
+    findall(Hw, member((N,Hw), AllocatedHW), Hs), 
+    sumlist(Hs, PreviouslyUsedHwAtN), % questo mi sa inutile in quanto AllocatedHW non contiene duplicati. (?)
+    HW_Cap >= HW_Reqs + PreviouslyUsedHwAtN + UsedHw,
+  
+    hwReqsOK2(HW_Reqs, (HW_Cap, Cost), N, AllocatedHW, NewAllocatedHW, NodeHwCost). 
 
 hwReqsOK2(HW_Reqs, (HW_Cap, Cost), N, [], [(N,HW_Reqs)], HwCost) :- 
     HW_Reqs =< HW_Cap, HwCost is HW_Reqs * Cost.
