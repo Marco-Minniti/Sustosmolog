@@ -1,103 +1,114 @@
+
 :- use_module(library(lists)).
 :- use_module(library(clpfd)).
 :- consult('core').
 :- ['example'].
 %:-['infra','app'].
 
-
-:- dynamic deployment/3.
-:- dynamic usedHw/2.
-
-
-%-----------------------------------------------------------------------------------------------
-%USER FORMAT: user(id, plan)
-user(u1, premium).
-user(u2, trial).
-user(u3, trial).
-
-%REQUEST FORMAT: request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, UserID). 
-request((0,highest), arApp, adaptive, full, 110). %query
-request((0,highest), arApp, adaptive, full, 107).
-request((0,highest), arApp, adaptive, full, 107).
 %-----------------------------------------------------------------------------------------------
 
-%-----------------------------------------------------------------------------------------------
-placementRequests(Result) :- %query: placementRequests(Requests). -->Requests = [request((0,highest),arApp,adaptive,full,110,1), request((0,highest),arApp,adaptive,full,110,2), request((0,highest),arApp,adaptive,full,99,1) ]
-findall((SortType, AppId, AppVersion, PreferredMELVersion, MaxCost), request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost), Requests),
-processRequests(Requests, [], Result).
+% Request format: request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, UserID). 
+request((0,highest), app1, adaptive, full, 999).
+% request((0,highest), app2, adaptive, full, 999).
+% request((0,highest), app3, adaptive, full, 999).
+request((0,highest), arApp, adaptive, full, 110).
 
-
-processRequests([], Acc, Acc).
-processRequests([(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost) | Rest], Acc, Result) :-
-goForBest(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, BestPlacement),
-NewAcc = [BestPlacement | Acc],
-processRequests(Rest, NewAcc, Result).
-
-%findall(goForBest(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, UserID), request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, UserID), Requests),
-%per dare priorità a quelli premium lo potrei fare mettendo nella clausola centrale che ti cerchi solo gli user(_, premium) 
-%process_requests(Requests).
-
-%placementRequest(Request, BestPlacement) %predicato che elabora le richieste
 %-----------------------------------------------------------------------------------------------
 
+best(BestPlacements,BestProfit) :-
+    % prende tutte le richieste da gestire
+    findall((SortType, AppId, AppVersion, PreferredMELVersion, MaxCost), request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost), As),
+    % trova tutti i piazzamenti possibili per tutte le applicazioni, con il relativo profitto totale
+    findall(sol(Profit,Placements),  ( place([], As, Placements, []), profit(Placements, Profit) ), Solutions), 
+    % ordina le soluzioni in ordine decrescente di profitto e prendi la (prima) soluzione ottima
+    sort(Solutions, Tmp), reverse(Tmp, [sol(BestProfit,BestPlacements)|_]). 
 
+% calcola il profitto totale dei piazzamenti
+profit([s(_,ProfitP)|Ps], Profit) :-
+    profit(Ps,TmpProfit),
+    Profit is ProfitP + TmpProfit.
+profit([], 0).
 
-% Finds the best solution, relying on goForBest and returns CPU time.
-% Example query: go((0,highest), arApp, adaptive, full, 100, V, C, Best, Time).
-%%
+% OldHw format = AllocatedHW format: [(Node, HwUsed)].
+place(Placements, [A|As], NewPlacements, OldHw) :-
+    % piazza l'applicazione A in uno dei modi possibili tenendo conto dell'hardware utilizzato dai piazzamenti precedentemente effettuati presenti in "Placements"
+    place_app(Placements, A, TempPlacements, OldHw, NewHw),
+    place(TempPlacements, As, NewPlacements, NewHw). % ricorre sulle altre applicazioni
+place(Placements, [_|As], NewPlacements, OldHw) :-
+    % non piazzare l'applicazione A, ricorre quindi sulle altre applicazioni
+    place(Placements, As, NewPlacements, OldHw). 
+place(Placements, [], Placements, _). % caso base: non ci sono altre applicazioni da piazzare
+
+place_app(Placements, (_, AppId, AppVersion, _, MaxCost), [s(Placement, PlacementProfit)|Placements], OldHw, NewHw) :-
+    % ottiene un singolo piazzamento ammissibile di A, tenendo conto delle risorse Hw già allocate, presenti in OldHw
+    % restuiendomi così il Placement che concatena insieme agli altri per la creazione della lista soluzione, il profitto e l'hw allocato del placement 
+    placement(AppId, AppVersion, MaxCost, Placement, PlacementProfit, AllocatedHW, OldHw),
+    % aggiorna le risorse Hw allocate
+    merge(AllocatedHW, OldHw, NewHw).
+
+merge([(N,H)|As], OldHw, NewHw) :-
+    member((N,H1), OldHw),
+    NewH is H1+H,
+    select((N,H1), OldHw, (N,NewH), TmpHw),
+    merge(As,TmpHw, NewHw).
+merge([(N,H)|As], OldHw, NewHw) :-
+    \+ member((N,H), OldHw),
+    merge(As, [(N,H)|OldHw], NewHw).
+merge([],H,H).
+
+%-----------------------------------------------------------------------------------------------
+
 go(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, VC, C, Best, Time) :-
-    statistics(cputime, Start),
-    goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement),
-    statistics(cputime, Stop), Time is Stop - Start,
-    nth0(1,BestPlacement,VC), nth0(2,BestPlacement,C), nth0(3,BestPlacement,Best).
+statistics(cputime, Start),
+goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement),
+statistics(cputime, Stop), Time is Stop - Start,
+nth0(1,BestPlacement,VC), nth0(2,BestPlacement,C), nth0(3,BestPlacement,Best).
 
-% goForBest returns the "best" full ranked placement according to the given SortType
-%   SortType is a couple (S,highest/lowest) to indicate:
-%   - the ranking value with respect to which sort results, i.e. ranking (S=0), version compliance (S=1), cost (S=2), and
-%   - how to sort (Highest or lowest)
-% Sample queries:
-%   goForBest((0,highest), smartHome, dunno, full, 40, Best).
-%   goForBest(prolog, (2,lowest),  smartHome, dunno, full, 40, Best).
-%   goForBest(clp,    (1,lowest),  smartHome, dunno, full, 40, Best).
-goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement) :-
-    findall((Placement, PlacementCost), placement(AppName, AppVersion, MaxCost, Placement, PlacementCost), Placements),
+
+% goForBest((0,highest), arApp, adaptive, full, 110, BestPlacement, PlacementsHw, []).
+% goForBest((0,highest), testApp, adaptive, full, 999, BestPlacement, PlacementsHw, []).
+goForBest(SortType, AppName, AppVersion, PreferredMelVersion, MaxCost, BestPlacement, PlacementsHw, OldHw) :-
+    findall((Placement, PlacementProfit, AllocatedHW), placement(AppName, AppVersion, MaxCost, Placement, PlacementProfit, AllocatedHW, OldHw), PlacementsHw),
+    maplist(extractPlacements, PlacementsHw, Placements),
     evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements),
-    best(SortType,EvaluatedPlacements,BestPlacement),
-    
-    hwUsed(BestPlacement, HwUsed), % [all(Node,AllocatedHw),...] % Considero fattibile il placement arrivato fin qui, da questo estraggo i nomi dei servizi, calcolo l'hw COMPLESSIVO, aggiorno la kb.
-    assert(deployment(AppName, BestPlacement, HwUsed)). % --> deployment(fooApp, [on(s1,small,n1), on(s2, large, n24), on(s1, small, n1)], [ all(n1,10), all(n24,8) ]).
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    placement(AppName, AppVersion, MaxCost, Placement, TotCost) :-
+    best(SortType,EvaluatedPlacements,BestPlacement).
+
+extractPlacements((Placement, PlacementProfit, _), (Placement, PlacementProfit)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% placement(arApp, adaptive, 110, Placement, PlacementProfit, AllocatedHW, []).
+% placement(testApp, adaptive, 999, Placement, PlacementProfit, AllocatedHW, []).
+placement(AppName, AppVersion, MaxCost, Placement, TotCost, AllocatedHW, OldHw) :-
     application((AppName, AppVersion), MELs),
-    melPlacementOK(MELs, Placement, [], 0, TotCost, MaxCost),
+    melPlacementOK(MELs, Placement, [], 0, TotCost, MaxCost, AllocatedHW, OldHw),
     findall(mel2mel(M1,M2,Latency), mel2mel_in_placement(M1,M2,Latency,Placement), FlowConstraints),
     flowsOK(FlowConstraints, Placement).
 
 % evalPacements ranks a list of placements
 evalPlacements(_, _, _, [], []).
 evalPlacements(AppName, AppVersion, PreferredMelVersion, [(Placement,Cost)], [[_, VersionCompliance, Cost, Placement]]):-
-application((AppName, AppVersion), Mels), length(Mels, NMels), 
-findall(S, member(on(S, PreferredMelVersion, _), Placement), Ls), length(Ls, NPreferredVersionMels),
-VersionCompliance is div(100*NPreferredVersionMels,NMels).
-evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements):-
-length(Placements, L), L>1, 
-application((AppName, AppVersion), Mels), length(Mels, NMels),
-maxANDmin(Placements, MinAllCosts, MaxAllCosts),
-findall([Formula, VersionCompliance, Cost, Placement], 
-          (member((Placement, Cost), Placements), 
-           findall(S, member(on(S, PreferredMelVersion, _), Placement), Ls), length(Ls, NPreferredVersionMels),
-           VersionCompliance is div(100*NPreferredVersionMels,NMels),
-           ( (MaxAllCosts-MinAllCosts > 0, NormalizedCost is div((100*(MaxAllCosts - Cost)),(MaxAllCosts - MinAllCosts))); NormalizedCost is 100 ),
-           Formula is VersionCompliance + NormalizedCost),
-         EvaluatedPlacements).
+    application((AppName, AppVersion), Mels), length(Mels, NMels), 
+    findall(S, member(on(S, PreferredMelVersion, _), Placement), Ls), length(Ls, NPreferredVersionMels),
+    VersionCompliance is div(100*NPreferredVersionMels,NMels).
+    evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements):-
+    length(Placements, L), L>1, 
+    application((AppName, AppVersion), Mels), length(Mels, NMels),
+    maxANDmin(Placements, MinAllCosts, MaxAllCosts),
+    findall([Formula, VersionCompliance, Cost, Placement], 
+            (member((Placement, Cost), Placements), 
+            findall(S, member(on(S, PreferredMelVersion, _), Placement), Ls), length(Ls, NPreferredVersionMels),
+            VersionCompliance is div(100*NPreferredVersionMels,NMels),
+            ( (MaxAllCosts-MinAllCosts > 0, NormalizedCost is div((100*(MaxAllCosts - Cost)),(MaxAllCosts - MinAllCosts))); NormalizedCost is 100 ),
+            Formula is VersionCompliance + NormalizedCost),
+            EvaluatedPlacements).
 
 maxANDmin([(_, Cost)|Rest], MinCost, MaxCost) :- 
-length(Rest,L),L>0,
-maxANDmin(Rest, RestMinCost, RestMaxCost),
-((Cost =< RestMinCost, MinCost is Cost); (Cost > RestMinCost, MinCost is RestMinCost)),
-((Cost >= RestMaxCost, MaxCost is Cost); (Cost < RestMaxCost, MaxCost is RestMaxCost)).
-maxANDmin([(_, Cost)], Cost, Cost). 
+    length(Rest,L),L>0,
+    maxANDmin(Rest, RestMinCost, RestMaxCost),
+    ((Cost =< RestMinCost, MinCost is Cost); (Cost > RestMinCost, MinCost is RestMinCost)),
+    ((Cost >= RestMaxCost, MaxCost is Cost); (Cost < RestMaxCost, MaxCost is RestMaxCost)).
+    maxANDmin([(_, Cost)], Cost, Cost). 
 
 best(_, [], none).
 best(_, [P], P).
@@ -117,7 +128,7 @@ choose((S,lowest), E, BestOfEs, BestOfEs) :- nth0(S, E, V), nth0(S, BestOfEs, W)
 % goForAll(arApp, adaptive, full, 110, HeuP, HeuF, BestP, BestF, BestVC, BestC, WorstP, WorstF, WorstVC, WorstC, Time).
 goForAll(AppName, AppVersion, PreferredMelVersion, MaxCost, HeuP, HeuF, BestP, BestF, BestVC, BestC, WorstP, WorstF, WorstVC, WorstC, Time) :-
     statistics(cputime, Start),
-findall((Placement, PlacementCost), placement(AppName, AppVersion, MaxCost, Placement, PlacementCost), Placements),
+findall((Placement, PlacementProfit), placement(AppName, AppVersion, MaxCost, Placement, PlacementProfit), Placements),
 evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements),
 sort(1,@>=,EvaluatedPlacements, SPlacements),
 SPlacements=[Best|_],
@@ -136,53 +147,3 @@ PSorted = HeuPSorted,
 
 myPrint([]).
 myPrint([X|Xs]):-write_ln(X),myPrint(Xs).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% Query: hwUsed([175, 75, 107, [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)]], HwUsed).
-% Out: HwUsed = [all(edge42, 1), all(cloud42, 88)] .
-hwUsed(P, HwUsed) :-
-    extractSublist(P, _, Sublist), 
-    getNodes(Sublist, [], Nodes),   
-    placementHwUsed(Nodes, Sublist, HwUsed), 
-    assertUsedHw(HwUsed).
-
-% Query: assertUsedHw([all(edge42, 1), all(cloud42, 88)]).
-assertUsedHw([]).
-assertUsedHw([all(N,UsedHwAtN)|Rest]) :- 
-    \+ usedHw(N,_),
-    assertUsedHw(Rest),
-    assert(usedHw(N,UsedHwAtN)).
-assertUsedHw([all(N,UsedHwAtN)|Rest]) :- 
-    usedHw(N,OldHw), 
-    assertUsedHw(Rest),
-    NewHw is OldHw + UsedHwAtN, 
-    retract(usedHw(N,OldHw)), assert(usedHw(N,NewHw)).
-
-
-% Query: placementHwUsed([edge42, cloud42], [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)], HwUsed).
-% Out: HwUsed = [all(edge42, 1), all(cloud42, 88)].
-placementHwUsed([],_,[]).         
-placementHwUsed([N|Rest], Sublist, [all(N,UsedHwAtN)|HwUsed]) :- 
-    placementHwUsed(Rest, Sublist, HwUsed),
-    findall(HwReqs, (member(on(S,V,N), Sublist), mel((S,V),_,HwReqs,_)), SingleUsedHWs), % Voglio trovare tutti gli elementi on(S, V, N) in Sublist, preso un elemento es on(usersData, full, cloud42), mi ricavo il relativo mel((S,V),_,HwReqs,_) ovvero mel((usersData,full),_,64,_), da cui estraggo HwReqs=64 e lo metto in una lista SingleUsedHWs
-    sumlist(SingleUsedHWs, UsedHwAtN). 
-
-% Query: extractSublist([175, 75, 107, [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)]], _, Sublists).
-% Out: Sublists = [on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)]
-extractSublist([], Sublists, Sublists).
-extractSublist([Item|Rest], _, Sublist) :-
-    extractSublist(Rest, Item, Sublist).
-
-% Query: getNodes([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(arDriver, light, edge42)], [], Nodes).
-% Out: Nodes = [edge42, cloud42]
-getNodes([], Nodes, Nodes).
-getNodes([on(_,_,N)|Rest], Acc, Nodes) :-
-    member(N, Acc),
-    getNodes(Rest, Acc, Nodes).
-getNodes([on(_,_,N)|Rest], Acc, Nodes) :-
-    \+ member(N, Acc),
-    NewList = [N | Acc],
-    getNodes(Rest, NewList, Nodes).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -1,56 +1,52 @@
 
-:- dynamic usedHw/2.
-
-
-% Places all MELs specified in the application and prunes the search
-% when MaxCost is exceeded.
-melPlacementOK([], [], _, PlacementCost, PlacementCost, _).
-melPlacementOK([(M, Version)| Ss], [on(M, Version, N)|P], AllocatedHW, CostUpToNow, TotalCost, MaxCost) :-
-    placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeCost),
-    NewCost is CostUpToNow + NodeCost,
-    NewCost =< MaxCost,
-    melPlacementOK(Ss, P, NewAllocatedHW, NewCost, TotalCost, MaxCost).
+% melPlacementOK([(usersData, full), (videoStorage,_), (movementProcessing,_), (arDriver,_)], Placement, [], 0, TotCost, 110, AllocatedHW).
+melPlacementOK([], [], AllocatedHW, PlacementProfit, PlacementProfit, _, AllocatedHW, _).
+melPlacementOK([(M, Version)| Ss], [on(M, Version, N)|P], AllocatedHW, ProfitUpToNow, TotalProfit, MaxCost, FinalAllocatedHW, OldHw) :-
+    placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeProfit, OldHw),
+    NewProfit is ProfitUpToNow + NodeProfit,
+    NewProfit =< MaxCost,
+    melPlacementOK(Ss, P, NewAllocatedHW, NewProfit, TotalProfit, MaxCost, FinalAllocatedHW, OldHw).
 
 % Places one MEL to a node N that can host it.
 % Returns the cost of such a placement.
-placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeCost) :- 
+placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeProfit, OldHw) :- 
 	mel((M, Version), SW_Reqs, HW_Reqs, Thing_Reqs),
 	node(N, SW_Caps, HW_Caps, Thing_Caps),
-    swReqsOK(SW_Reqs, SW_Caps, NodeSwCost),
-    thingReqsOK(Thing_Reqs, Thing_Caps, NodeThingCost),
-    hwReqsOK(HW_Reqs, HW_Caps, N, AllocatedHW, NewAllocatedHW, NodeHwCost),
-    NodeCost is NodeSwCost + NodeThingCost + NodeHwCost. 
+    swReqsOK(SW_Reqs, SW_Caps, NodeSwProfit),
+    thingReqsOK(Thing_Reqs, Thing_Caps, NodeThingProfit),
+    hwReqsOK(HW_Reqs, HW_Caps, N, AllocatedHW, NewAllocatedHW, NodeHwProfit, OldHw),
+    NodeProfit is NodeSwProfit + NodeThingProfit + NodeHwProfit. 
     
 % Checks software requirements and returns their cost if they can be satisfied.
-swReqsOK(SW_Reqs, SW_Caps, Cost) :- costIfCapsOK(SW_Reqs, SW_Caps, Cost).
+swReqsOK(SW_Reqs, SW_Caps, Profit) :- costIfCapsOK(SW_Reqs, SW_Caps, Profit).
 
 % Checks IoT requirements and returns their cost if they can be satisfied.
-thingReqsOK(T_Reqs, T_Caps, Cost) :- costIfCapsOK(T_Reqs, T_Caps, Cost).
+thingReqsOK(T_Reqs, T_Caps, Profit) :- costIfCapsOK(T_Reqs, T_Caps, Profit).
 
 % Checks capabilities and returns their cost if they can be satisfied.
 costIfCapsOK([], _, 0).
-costIfCapsOK([Cap| CWs], Caps, TotalCost) :-
-   member((Cap, Cost), Caps), % controllo se la capability è presente e in tal caso prendo il costo
+costIfCapsOK([Cap| CWs], Caps, TotalProfit) :-
+   member((Cap, Profit), Caps), % controllo se la capability è presente e in tal caso prendo il costo
    costIfCapsOK(CWs, Caps, Rest),
-   TotalCost is Cost + Rest.
+   TotalProfit is Profit + Rest.
 
-% Checks hardware requirements and returns their cost if they can be satisfied.
-% called with    hwReqsOK(HW_Reqs, HW_Caps, N, AllocatedHW, NewAllocatedHW, NodeHwCost),
-hwReqsOK(HW_Reqs, (HW_Cap, Cost), N, AllocatedHW, NewAllocatedHW, NodeHwCost) :-
+% hwReqsOK(1, (6, 3), edge42, [(cloud42, 88), (edge42, 2)], NewAllocatedHW, NodeHwProfit).
+hwReqsOK(HWReqs, (HWCap, Profit), N, AllocatedHW, NewAllocatedHW, NewProfit, OldHw) :-
+    % ( usedHw(N, UsedHw); \+ usedHw(N,_), UsedHw is 0 ),
+    (   (member((N,UsedHw), OldHw)) ; ( \+ member((N,_), OldHw), UsedHw is 0 ) ),
+    (   (member((N,PreviouslyUsedHwAtN), AllocatedHW)) ; ( \+ member((N,_), AllocatedHW), PreviouslyUsedHwAtN is 0 ) ),
+    RequiredHW is HWReqs + PreviouslyUsedHwAtN + UsedHw, HWCap >= RequiredHW,
+    updatedAllocation(N, HWReqs, AllocatedHW, NewAllocatedHW),
+    updatedCost(HWReqs, Profit, NewProfit).
 
-    ( usedHw(N, UsedHw); \+ usedHw(N,_), UsedHw = 0 ),
-    findall(Hw, member((N,Hw), AllocatedHW), Hs), 
-    sumlist(Hs, PreviouslyUsedHwAtN), % questo mi sa inutile in quanto AllocatedHW non contiene duplicati. (?)
-    HW_Cap >= HW_Reqs + PreviouslyUsedHwAtN + UsedHw,
-  
-    hwReqsOK2(HW_Reqs, (HW_Cap, Cost), N, AllocatedHW, NewAllocatedHW, NodeHwCost). 
-
-hwReqsOK2(HW_Reqs, (HW_Cap, Cost), N, [], [(N,HW_Reqs)], HwCost) :- 
-    HW_Reqs =< HW_Cap, HwCost is HW_Reqs * Cost.
-hwReqsOK2(HW_Reqs, (HW_Cap, Cost), N, [(N,A)|As], [(N,NewA)|As], HwCost) :-
-    HW_Reqs + A =< HW_Cap, NewA is A + HW_Reqs, HwCost is HW_Reqs * Cost.
-hwReqsOK2(HW_Reqs, HW_Caps, N, [(N1,A1)|As], [(N1,A1)|NewAs], HwCost) :-
-    dif(N,N1), hwReqsOK2(HW_Reqs, HW_Caps, N, As, NewAs, HwCost).
+updatedCost(HWReqs, Profit, NewProfit) :- NewProfit is HWReqs * Profit.
+% con questo modo di aggiornare il placement posso rimuovere tutti gli hwReqsOK2.
+updatedAllocation(N, HWReqs, AllocatedHW, [(N,HWReqs)|AllocatedHW]) :- 
+    \+ member((N,_), AllocatedHW).
+updatedAllocation(N, HWReqs, AllocatedHW, NewAllocatedHW) :- 
+    member((N,PreviouslyUsedHwAtN), AllocatedHW),
+    NewUsedHwAtN is PreviouslyUsedHwAtN + HWReqs,
+    select((N,PreviouslyUsedHwAtN), AllocatedHW, (N,NewUsedHwAtN), NewAllocatedHW).
 
 % Retrieve all s2s of already placed MELs
 mel2mel_in_placement(S1, S2, Latency, P) :-
