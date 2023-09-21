@@ -46,10 +46,49 @@ application((app3, adaptive), [(mel1,_), (mel2,_), (mel3,_), (mel4,_), (mel5,_)]
 % Example Infrastructure %
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-node(edge42, [(gcc,0),(caffe,4)], (6, 3), [(phone,1),(lightSensor,1)]).
-node(cloud42, [(docker, 5)], (100, 1), []).
+node(edge42, [(gcc,0),(caffe,4)], (60, 3), [(phone,1),(lightSensor,1)]).
+node(cloud42, [(docker, 5)], (200, 1), []).
+
+% energyConsumption(NodeId, WattXHwUnit)
+energyConsumption(edge42, 3).
+energyConsumption(cloud42, 2).
+
+% Format: energyMix( NodeId, [(Fonte fossile, % usata)], [(Fonte rinnovabile, % usata)] ). 
+energyMix(edge42, [(carbone, 0.7), (petrolio, 0.1), (solare, 0.2)]).
+energyMix(cloud42, [(petrolio, 0.6), (solare, 0.4)]).
+
+% Format: co2(Fonte, kgCO2-eq/kWh).
+co2(carbone, 1.1).
+co2(petrolio, 1.0).
+co2(solare, 0.02).
+co2(gas, 0.610).
+co2(coal, 1.1).
+co2(onshorewind, 0.0097).
+co2(offshorewind, 0.0165).
+co2(solar, 0.05). 
+% https://solarbay.com.au/portfolio-item/how-much-emissions-does-solar-power-prevent/
+
+% Questa sezione fondamentale l'ordine di definizione -> vedi ordine elementi di targetsOk(Elements) 
+target(energy, 2000).
+target(co2, 1000).
+
 
 link(edge42, cloud42, 20).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 % INPUT / QUERY format: goForBest(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, BestPlacement).

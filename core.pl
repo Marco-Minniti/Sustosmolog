@@ -33,9 +33,10 @@ costIfCapsOK([Cap| CWs], Caps, TotalProfit) :-
 % hwReqsOK(1, (6, 3), edge42, [(cloud42, 88), (edge42, 2)], NewAllocatedHW, NodeHwProfit).
 hwReqsOK(HWReqs, (HWCap, Profit), N, AllocatedHW, NewAllocatedHW, NewProfit, OldHw) :-
     % ( usedHw(N, UsedHw); \+ usedHw(N,_), UsedHw is 0 ),
-    (   (member((N,UsedHw), OldHw)) ; ( \+ member((N,_), OldHw), UsedHw is 0 ) ),
-    (   (member((N,PreviouslyUsedHwAtN), AllocatedHW)) ; ( \+ member((N,_), AllocatedHW), PreviouslyUsedHwAtN is 0 ) ),
-    RequiredHW is HWReqs + PreviouslyUsedHwAtN + UsedHw, HWCap >= RequiredHW,
+    ( deploymentsInfos(_, _, OldAllocatedHW, _), member((N, HwAsserted), OldAllocatedHW); \+ deploymentsInfos(_, _, _, _), HwAsserted is 0 ), % Hw allocato nelle vecchie sessioni
+    (   (member((N,UsedHw), OldHw)) ; ( \+ member((N,_), OldHw), UsedHw is 0 ) ), % Hw delle richieste precedenti, sessione corrente
+    (   (member((N,PreviouslyUsedHwAtN), AllocatedHW)) ; ( \+ member((N,_), AllocatedHW), PreviouslyUsedHwAtN is 0 ) ), % Hw della richiesta corrente
+    RequiredHW is HWReqs + PreviouslyUsedHwAtN + UsedHw + HwAsserted, HWCap >= RequiredHW,
     updatedAllocation(N, HWReqs, AllocatedHW, NewAllocatedHW),
     updatedCost(HWReqs, Profit, NewProfit).
 
