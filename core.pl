@@ -1,20 +1,21 @@
 
-% melPlacementOK([(usersData, full), (videoStorage,_), (movementProcessing,_), (arDriver,_)], Placement, [], 0, TotCost, 110, AllocatedHW).
-melPlacementOK([], [], AllocatedHW, PlacementProfit, PlacementProfit, _, AllocatedHW, _).
-melPlacementOK([(M, Version)| Ss], [on(M, Version, N)|P], AllocatedHW, ProfitUpToNow, TotalProfit, MaxCost, FinalAllocatedHW, OldHw) :-
-    placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeProfit, OldHw),
+% melPlacementOK([(s1, _)], P, [(n2, 1)], 0, TotalProfit, 999, FinalAllocatedHW, [])
+melPlacementOK(_, [], [], PlacementProfit, PlacementProfit, _, AllocatedHW, AllocatedHW).
+melPlacementOK(AppName, [(M, Version)| Ss], [on(M, Version, N)|P], ProfitUpToNow, TotalProfit, MaxCost, OldHw, FinalAllocatedHW) :-
+    placementOK(AppName, (M, Version), N, NodeProfit, OldHw, NewAllocatedHW),
     NewProfit is ProfitUpToNow + NodeProfit,
     NewProfit =< MaxCost,
-    melPlacementOK(Ss, P, NewAllocatedHW, NewProfit, TotalProfit, MaxCost, FinalAllocatedHW, OldHw).
+    melPlacementOK(AppName, Ss, P, NewProfit, TotalProfit, MaxCost, NewAllocatedHW, FinalAllocatedHW).
 
-% Places one MEL to a node N that can host it.
-% Returns the cost of such a placement.
-placementOK((M, Version), N, AllocatedHW, NewAllocatedHW, NodeProfit, OldHw) :- 
+
+
+% placementOK(appCR, (s2, full), n2, _, (appCR, [(n2, 6), (n1, 4)]), _).
+placementOK(AppName, (M, Version), N, NodeProfit, OldHw, NewAllocatedHW) :- 
 	mel((M, Version), SW_Reqs, HW_Reqs, Thing_Reqs),
 	node(N, SW_Caps, HW_Caps, Thing_Caps),
     swReqsOK(SW_Reqs, SW_Caps, NodeSwProfit),
     thingReqsOK(Thing_Reqs, Thing_Caps, NodeThingProfit),
-    hwReqsOK(HW_Reqs, HW_Caps, N, AllocatedHW, NewAllocatedHW, NodeHwProfit, OldHw),
+    hwReqsOK(AppName, HW_Reqs, HW_Caps, N, NodeHwProfit, OldHw, NewAllocatedHW),
     NodeProfit is NodeSwProfit + NodeThingProfit + NodeHwProfit. 
     
 % Checks software requirements and returns their cost if they can be satisfied.
@@ -30,24 +31,28 @@ costIfCapsOK([Cap| CWs], Caps, TotalProfit) :-
    costIfCapsOK(CWs, Caps, Rest),
    TotalProfit is Profit + Rest.
 
-% hwReqsOK(1, (6, 3), edge42, [(cloud42, 88), (edge42, 2)], NewAllocatedHW, NodeHwProfit).
-hwReqsOK(HWReqs, (HWCap, Profit), N, AllocatedHW, NewAllocatedHW, NewProfit, OldHw) :-
-    % ( usedHw(N, UsedHw); \+ usedHw(N,_), UsedHw is 0 ),
-    ( deploymentsInfos(_, _, OldAllocatedHW, _), member((N, HwAsserted), OldAllocatedHW); \+ deploymentsInfos(_, _, _, _), HwAsserted is 0 ), % Hw allocato nelle vecchie sessioni
-    (   (member((N,UsedHw), OldHw)) ; ( \+ member((N,_), OldHw), UsedHw is 0 ) ), % Hw delle richieste precedenti, sessione corrente
-    (   (member((N,PreviouslyUsedHwAtN), AllocatedHW)) ; ( \+ member((N,_), AllocatedHW), PreviouslyUsedHwAtN is 0 ) ), % Hw della richiesta corrente
-    RequiredHW is HWReqs + PreviouslyUsedHwAtN + UsedHw + HwAsserted, HWCap >= RequiredHW,
-    updatedAllocation(N, HWReqs, AllocatedHW, NewAllocatedHW),
+
+% hwReqsOK(appCR, 6, (5, 1), n1, _, [(appCR, [(n2, 6), (n1, 4)])], []).
+hwReqsOK(AppName, HWReqs, (HWCap, Profit), N, NewProfit, OldHw, NewAllocatedHW) :-
+    findall(Value, (member((_, Hws), OldHw), member((N, Value), Hws)), HwsAtN),
+    sum_list(HwsAtN, Sum),
+    HWCap - Sum >= HWReqs,
+    
+    updatedAllocation(AppName, N, HWReqs, OldHw, NewAllocatedHW),
     updatedCost(HWReqs, Profit, NewProfit).
 
 updatedCost(HWReqs, Profit, NewProfit) :- NewProfit is HWReqs * Profit.
-% con questo modo di aggiornare il placement posso rimuovere tutti gli hwReqsOK2.
-updatedAllocation(N, HWReqs, AllocatedHW, [(N,HWReqs)|AllocatedHW]) :- 
-    \+ member((N,_), AllocatedHW).
-updatedAllocation(N, HWReqs, AllocatedHW, NewAllocatedHW) :- 
-    member((N,PreviouslyUsedHwAtN), AllocatedHW),
+updatedAllocation(AppName, N, HWReqs, OldHw, [(AppName, [(N,HWReqs)])|OldHw]) :- 
+    \+ member((AppName,_), OldHw).
+updatedAllocation(AppName, N, HWReqs, OldHw, NewAllocatedHW) :- 
+    member((AppName,HwList), OldHw), \+ member((N,_), HwList),
+    append([(N,HWReqs)], HwList, NewHwList),
+    select((AppName,HwList), OldHw, (AppName,NewHwList), NewAllocatedHW).
+updatedAllocation(AppName, N, HWReqs, OldHw, NewAllocatedHW) :- 
+    member((AppName,HwList), OldHw), member((N,PreviouslyUsedHwAtN), HwList),
     NewUsedHwAtN is PreviouslyUsedHwAtN + HWReqs,
-    select((N,PreviouslyUsedHwAtN), AllocatedHW, (N,NewUsedHwAtN), NewAllocatedHW).
+    select((N,PreviouslyUsedHwAtN), HwList, (N,NewUsedHwAtN), NewHwList),
+    select((AppName,HwList), OldHw, (AppName,NewHwList), NewAllocatedHW).
 
 % Retrieve all s2s of already placed MELs
 mel2mel_in_placement(S1, S2, Latency, P) :-

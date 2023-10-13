@@ -7,112 +7,134 @@
 %:-['infra','app'].
 
 /*
-
-Singolo nodo:
-% 0.7 carbone = 1.1 kgCO2-eq/kWh
-% 0.1 petrolio = 1.0 kgCO2-eq/kWh
-% 0.2 solare  = 0.02 kgCO2-eq/kWh
-
-Format: node(N, Sw, Hw, Iot, ([(Fonte fossile, % usata)], [(Fonte rinnovabile, % usata)]) ). 
-Es.
-node(edge42, [(gcc,0),(caffe,4)], (6, 3), [(phone,1),(lightSensor,1)] ).
-energyMix(edge42, [(Carbone, 0.7), (Petrolio, 0.1)], [(Solare, 0.2)]).
-energyConsumption(NodeId, WattXHwUnit).
-energyConsumption(edge42, 1).
-node(cloud42, [(docker, 5)], (100, 1), [], ([(Petrolio, 0.6)], [(Solare, 0.4)]) ).
-
-Format: co2(Fonte, kgCO2-eq/kWh).
-co2(Carbone, 1.1).
-co2(Petrolio, 1.0).
-co2(Solare, 0.02).
-
-% 0.5 kW consumo totale (delle risorse hw della soluzione(?)) della soluzione (insieme di placement)
-
-% 0.5  (0.8 * 1.1 + 0.2 * 0.02 + 0.1 * 1.0)
-Emissioni kgCO2-eq = (0.5 kW x 70% x 1.1 kgCO2-eq/kWh) + (0.5 kW x 10% x 1 kgCO2-eq/kWh) + (0.5 kW x 20% x 0.02 kgCO2-eq/kWh)
-
-% Alternativa (+ semplice)
-% - scegliere la soluzione che utilizza maggior quantità di energia rinnovabile (in altre parole, il placement che riesce quindi a soddifare la richiesta e a utilizzare maggiormente un nodo che utilizza una maggior % di energia rinnovabile (?)).
-% - 20% di 0.5 kWh è rinnovabile
-% - è migliore un placement dove è rinnovabile il 60% ...
+TODO:
+• Aggiunta, rimozione e modifica dei requisiti dei mel.
+• Cambiamento/Crash di un nodo, cambiamento/Crash di un link
+• Script python che simula CR su input variabili e raccoglie tempi esecuzione, emissioni e profitto
+NEW:
+• Gestire flavours sorting.
 */
-
-
 
 %-----------------------------------------------------------------------------------------------
 
 % Request format: request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost, UserID). 
-request((0,highest), app1, adaptive, full, 999).
-% request((0,highest), app2, adaptive, full, 999).
-% request((0,highest), app3, adaptive, full, 999).
-request((0,highest), arApp, adaptive, full, 110).
+ % request((0,highest), testApp, adaptive, full, 999).
+ request((0,highest), app1, adaptive, full, 999).
+ request((0,highest), arApp, adaptive, full, 110).
+ %request((0,highest), appCR, adaptive, full, 999).
+ 
 
 %-----------------------------------------------------------------------------------------------
 
 :- dynamic deploymentsInfos/4.
+
 % deploymentsInfos(X, Y, Z, A).
 
-/*
-?- best(BestPlacements,BestProfit).
-BestPlacements = [s([on(usersData, full, cloud42), on(videoStorage, medium, cloud42), on(movementProcessing, full, cloud42), on(arDriver, medium, edge42)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)],
-BestProfit = 131.
-
-sort([sol(2, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(..., ..., ...)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)]),sol(3, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(..., ..., ...)], 108), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)]), sol(1, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(..., ..., ...)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)])], Sorted),
-reverse(Sorted, Reversed).
-
-*/
+:- dynamic deploymentsDetails/1. 
+% deploymentsDetails(X).
 
 best(BestPlacements,BestProfit) :-
-    % prende tutte le richieste da gestire
     findall((SortType, AppId, AppVersion, PreferredMELVersion, MaxCost), request(SortType, AppId, AppVersion, PreferredMELVersion, MaxCost), As),
-    % trova tutti i piazzamenti possibili per tutte le applicazioni, con il relativo profitto totale
-    findall(sol(Profit,Placements, HwUsed),  ( place([], As, Placements, [], HwUsed), profit(Placements, Profit) ), Solutions), % sol(131, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42), on(..., ..., ...)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)], [(cloud42, 97), (edge42, 3)])
-    % ordina le soluzioni in ordine decrescente di profitto e prendi la (prima) soluzione ottima
-    sort(Solutions, Tmp), reverse(Tmp, Reversed), % [sol(BestProfit,BestPlacements, _)|_] % prende il primo elemento, il resto non mi interessa
-    updateDeploymentState(Reversed, BestPlacements, BestProfit). 
-    %prendere il primo, però vedere cosa succede se fallisce la reverse, perchè secondo me va eliminata, devo far in modo di reversare tutta la lista, e non prendere solo il primo elemento ma scorrerla, e fare in modo che se i controlli falliscono va all'elemento dopo 
+    (deploymentsDetails(OldHw); \+ deploymentsDetails(_), OldHw = []),
+    filterDeploymentsDetails(OldHw, FilteredHw),
+    findall(sol(Profit,Placements, HwUsed),  ( place([], As, Placements, FilteredHw, HwUsed), profit(Placements, Profit) ), Solutions), 
+    byDecreasingProfit(Solutions, SortedSols),
+    updateDeploymentState(SortedSols, BestPlacements, BestProfit).
 
+byDecreasingProfit(Sols, SortedSols) :- sort(Sols, Tmp), reverse(Tmp, SortedSols).
 
-% Query : updateDeploymentState([sol(999, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)], [(cloud42, 99999), (edge42, 3)]), sol(131, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)], [(cloud42, 97), (edge42, 3)]), sol(1, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)], [(cloud42, 97), (edge42, 3)])], BestPlacements, BestProfit).
-% Out: BestPlacements = [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)],
-%      BestProfit = 131.
-% Easy query: updateDeploymentState([sol(999, [1], [(cloud42, 99999), (edge42, 3)]), sol(131, [2], [(cloud42, 97), (edge42, 3)]), sol(1, [3], [(cloud42, 97), (edge42, 3)])], BestPlacements, BestProfit).
+filterDeploymentsDetails([],[]).
+filterDeploymentsDetails([(AppId, Hw, _, _)|Rest], [(AppId,Hw)|FilteredHw]) :-
+    filterDeploymentsDetails(Rest, FilteredHw).
+
 updateDeploymentState(Reversed, BestPlacements, BestProfit) :- updateDeploymentState(Reversed, [], 0, BestPlacements, BestProfit).
-
 updateDeploymentState([], BestPlacements, BestProfit, BestPlacements, BestProfit).
 updateDeploymentState([sol(Profit,Placements,AllocatedHW)|_], _, _, BestPlacements, BestProfit) :-
-    greenCheck(AllocatedHW, CO2, E),
-    % greenCheck(AllocatedHW, SustParam),
-    updateDeploymentsInfos(sol(Profit,Placements,AllocatedHW), [(co2, CO2), (energy, E)]), % SOSTITUIRE CON VARIABILE LISTA TIPO SustParam = [(sustParamName, value)].
-    updateDeploymentState([], Placements, Profit, BestPlacements, BestProfit), !.
+    greenCheck(AllocatedHW, [], SustParam), % SustParam = [(app1, [(co2, 19.836), (energy, 24)]), (arApp, [(co2, 106.172), (energy, 166)])].
+    updateDeploymentsInfos(sol(Profit,Placements,AllocatedHW), SustParam, CutPlacements),
+    updateDeploymentState([], CutPlacements, Profit, BestPlacements, BestProfit), !.
 updateDeploymentState([sol(_,_,_)|Rest], TmpPlacements, TmpProfit, BestPlacements, BestProfit) :-
     updateDeploymentState(Rest, TmpPlacements, TmpProfit, BestPlacements, BestProfit).
 
 
-% Query: updateDeploymentsInfos(sol(131, [s([on(usersData, full, cloud42), on(videoStorage, full, cloud42), on(movementProcessing, full, cloud42)], 107), s([on(mel1, medium, cloud42), on(mel2, light, edge42)], 24)], [(cloud42, 97), (edge42, 3)]), [(co2, 295.374), (energy, 203)]).
-% Out: deploymentsInfos(X, Y, Z, A).
-updateDeploymentsInfos(sol(Profit,Placements,AllocatedHW), SustParam) :- 
-    deploymentsInfos(OldProfit, OldPlacements, OldAllocatedHW, OldSustParam), 
-    NewProfit is OldProfit + Profit,
-    merge(AllocatedHW, OldAllocatedHW, NewHw),
-    merge(SustParam, OldSustParam, NewSustParam),
-    append(Placements, OldPlacements, NewPlacements),
-    retract(deploymentsInfos(OldProfit, OldPlacements, OldAllocatedHW, OldSustParam)), assert(deploymentsInfos(NewProfit, NewPlacements, NewHw, NewSustParam)).
-updateDeploymentsInfos(sol(Profit,Placements,AllocatedHW), SustParam) :- 
-    \+ deploymentsInfos(_,_,_,_), assert(deploymentsInfos(Profit,Placements,AllocatedHW, SustParam)).
+updateDeploymentsInfos(sol(_,Placements,_), SustParam, OutCutPlacements) :- 
+    deploymentsInfos(OldProfit, OldPlacements, OldAllocatedHW, OldSustParam),
+    deploymentsDetails(OldDetails),
+    updateDeploymentsDetails(Placements, SustParam, [], OldProfit, OldPlacements, OldAllocatedHW, OldSustParam, OldDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, NewDetails),
+    retract(deploymentsInfos(OldProfit, OldPlacements, OldAllocatedHW, OldSustParam)), assert(deploymentsInfos(OutTotalPr,OutPlacements,OutTotalHw, OutTotalSus)),
+    retract(deploymentsDetails(OldDetails)), assert(deploymentsDetails(NewDetails)).
+
+updateDeploymentsInfos(sol(_,Placements,_), SustParam, OutCutPlacements) :- 
+    \+ deploymentsInfos(_,_,_,_), 
+    updateDeploymentsDetails(Placements, SustParam, [], 0, [], [], [], [], OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, NewDetails),
+    assert(deploymentsInfos(OutTotalPr,OutPlacements,OutTotalHw, OutTotalSus)),
+    assert(deploymentsDetails(NewDetails)).
 
 
- greenCheck(AllocatedHW, CO2, E) :-
-    footprint(AllocatedHW, 0, E, 0, CO2),
-    targetsOk(E, CO2).
+% updateDeploymentsDetails([s(appCR, [on(s1, full, n2), on(s2, full, n2)], 6, [(appCR, [(n2, 7)])])], [(appCR, [(co2, 2), (energy, 3)])], [], 10, [s(appCR, [on(s1, full, n1), on(s2, full, n2)])], [(n1, 4), (n2, 6)], [(energy, 0), (co2, 0)], [(appCR, [(n2, 6), (n1, 4)], 10, [(co2, 0), (energy, 0)])], OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, NewDetails).
+updateDeploymentsDetails([], _, CutPlacements, AssertTotalPr, AssertPlacements, AssertTotalHw, AssertTotalSus, NewDetails, CutPlacements, AssertTotalPr, AssertPlacements, AssertTotalHw, AssertTotalSus, NewDetails).
+updateDeploymentsDetails([s(AppId, NewMels, NewProfit, NewAllocatedHw) | Rest], SustParam, CutPlacements, TmpOldProfit, TmpOldPlacements, TmpOldAllocatedHW, TmpOldSustParam, TmpOldDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, OutDetails) :-
+    % ----- deploymentsDetails -----
+    member((AppId, OHw, OPr, OSus), TmpOldDetails), % REPLACE
+    member((AppId, NewHw), NewAllocatedHw),  
+    member((AppId, NewSus), SustParam),  
+    select((AppId, _, _, _), TmpOldDetails, (AppId, NewHw, NewProfit, NewSus), NewDetails), 
+    % ----- deploymentsInfos -----
+    select((s(AppId, _)), TmpOldPlacements, (s(AppId, NewMels)), AssertPlacements),
+    updateTotalAllocatedHw(NewHw, OHw, TmpOldAllocatedHW, [], AssertTotalHw), 
+    updateTotalSustainability(NewSus, OSus, TmpOldSustParam, AssertTotalSus),
+    AssertTotalPr is TmpOldProfit-OPr+NewProfit,
+    updateDeploymentsDetails(Rest, SustParam, [s(AppId, NewMels)|CutPlacements], AssertTotalPr, AssertPlacements, AssertTotalHw, AssertTotalSus, NewDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, OutDetails).
+
+updateDeploymentsDetails([s(AppId, NewMels, NewProfit, NewAllocatedHw) | Rest], SustParam, CutPlacements, TmpOldProfit, TmpOldPlacements, TmpOldAllocatedHW, TmpOldSustParam, TmpOldDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, OutDetails) :-
+    % ----- deploymentsDetails -----
+    \+ member((AppId,_,_,_) , TmpOldDetails),
+    member((AppId, NewHw), NewAllocatedHw),
+    member((AppId, NewSus), SustParam),  
+    append(TmpOldDetails, [(AppId, NewHw, NewProfit, NewSus)], NewDetails),
+    % ----- deploymentsInfos -----
+    append([s(AppId, NewMels)], TmpOldPlacements,  AssertPlacements),
+    merge(NewHw, TmpOldAllocatedHW, AssertTotalHw),
+    merge(NewSus, TmpOldSustParam, AssertTotalSus),
+    AssertTotalPr is TmpOldProfit + NewProfit,
+    updateDeploymentsDetails(Rest, SustParam, [s(AppId, NewMels)|CutPlacements], AssertTotalPr, AssertPlacements, AssertTotalHw, AssertTotalSus, NewDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, OutDetails).
+
+updateDeploymentsDetails(Placements, SustParam, CutPlacements, TmpOldProfit, TmpOldPlacements, TmpOldAllocatedHW, TmpOldSustParam, TmpOldDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, OutDetails) :-
+    \+ deploymentsDetails(_), assert(deploymentsDetails([])), updateDeploymentsDetails(Placements, SustParam, CutPlacements, TmpOldProfit, TmpOldPlacements, TmpOldAllocatedHW, TmpOldSustParam, TmpOldDetails, OutCutPlacements, OutTotalPr, OutPlacements, OutTotalHw, OutTotalSus, OutDetails).
+
+updateTotalSustainability(NewSus, OSus, OldSustParam, AssertTotalSus) :- updateTotalAllocatedHw(NewSus, OSus, OldSustParam, [], AssertTotalSus).
+
+% updateTotalAllocatedHw([(n2, 7)], [(n2, 6), (n1, 4)], [(n1, 4), (n2, 6)], [], Out).
+updateTotalAllocatedHw([],_,_,Out,Out).
+updateTotalAllocatedHw([(N,H)|Rest], OldHw, OldAllocatedHW, AssertTotalHw, Out) :-
+    member((N,H1), OldHw), member((N,H2), OldAllocatedHW),
+    NewH is H2-H1+H,
+    updateTotalAllocatedHw(Rest, OldHw, OldAllocatedHW, [(N, NewH)|AssertTotalHw], Out), !.
+updateTotalAllocatedHw([(N,H)|Rest], OldHw, OldAllocatedHW, AssertTotalHw, Out) :-
+    \+ member((N,_), OldAllocatedHW),
+    updateTotalAllocatedHw(Rest, OldHw, OldAllocatedHW, [(N, H)|AssertTotalHw], Out).
+updateTotalAllocatedHw([(N,H)|Rest], OldHw, OldAllocatedHW, AssertTotalHw, Out) :-
+    member((N,H2), OldAllocatedHW),
+    NewH is H2+H,
+    updateTotalAllocatedHw(Rest, OldHw, OldAllocatedHW, [(N, NewH)|AssertTotalHw], Out).
+
+% greenCheck([(arApp, [(edge42, 2), (cloud42, 80)]), (app1, [(edge42, 2), (cloud42, 9)])], [], SustParam).
+greenCheck([], TmpList, TmpList).
+greenCheck([(AppId, HwUsed)|Rest], TmpList, SustParam) :-
+    footprint(HwUsed, 0, E, 0, CO2),
+    targetsOk(E, CO2),
+    greenCheck(Rest, [(AppId, [(co2, CO2), (energy, E)])|TmpList], SustParam).
+
 
 % calcola il profitto totale dei piazzamenti
-profit([s(_,ProfitP)|Ps], Profit) :-
+profit([s(_,_,ProfitP,_)|Ps], Profit) :-
     profit(Ps,TmpProfit),
     Profit is ProfitP + TmpProfit.
 profit([], 0).
 
-% OldHw format = AllocatedHW format: [(Node, HwUsed)].
+% place_app([], ((0, highest), appCR, adaptive, full, 999), TempPlacements, [], NewHw).
+% place([], [((0, highest), app1, adaptive, full, 999), ((0, highest), arApp, adaptive, full, 110)], TempPlacements, [], HwUsed).
+% place([], [((0, highest), arApp, adaptive, full, 110)], TempPlacements, [], HwUsed).
 place(Placements, [A|As], NewPlacements, OldHw, HwUsed) :-
     % piazza l'applicazione A in uno dei modi possibili tenendo conto dell'hardware utilizzato dai piazzamenti precedentemente effettuati presenti in "Placements"
     place_app(Placements, A, TempPlacements, OldHw, NewHw),
@@ -122,33 +144,42 @@ place(Placements, [_|As], NewPlacements, OldHw, HwUsed) :-
     place(Placements, As, NewPlacements, OldHw, HwUsed). 
 place(Placements, [], Placements, OldHw, OldHw). % caso base: non ci sono altre applicazioni da piazzare
 
-place_app(Placements, (_, AppId, AppVersion, _, MaxCost), [s(Placement, PlacementProfit)|Placements], OldHw, NewHw) :-
-    % ottiene un singolo piazzamento ammissibile di A, tenendo conto delle risorse Hw già allocate, presenti in OldHw
-    % restuiendomi così il Placement che concatena insieme agli altri per la creazione della lista soluzione, il profitto e l'hw allocato del placement 
-    placement(AppId, AppVersion, MaxCost, Placement, PlacementProfit, AllocatedHW, OldHw),
-    % footprint(AllocatedHW, 0, E, 0, CO2),
-    % targetsOk(E, CO2),
-    % aggiorna le risorse Hw allocate
-    merge(AllocatedHW, OldHw, NewHw).
 
-/*
-% GENERALIZZATA
-% targetsOk([E,Co2], OutList).
-% targetsOk([100,200], [], OutList). 
-% Out: OutList = [(energy, 100), (co2, 200)]
-targetsOk([], Acc, Acc).
-targetsOk([Value|Rest], Acc, SustParam) :- % per generalizzare, considero che ogni elemento passato nella lista corrisponde all'elemento definito nella rispettiva posizione (es. Primo elemento: E di energia -> devo far in modo che prolog quando prende target(Param, Value), prende energia).
-    target(Param, Max), % qui problema backtracking, se lo blocco "!" riparte sempre da "energy" ad ogni call, se non lo blocco, il bcktrk riparte da qui dando in out 4 risultati.
-    ( deploymentsInfos(_, _, _, OldSustParam), member((Param, ValueAsserted), OldSustParam); \+ deploymentsInfos(_, _, _, _), ValueAsserted is 0 ),
-    Value + ValueAsserted =< Max,
-    targetsOk(Rest, [(Param, Value)|Acc], SustParam).   
-*/
+place_app(Placements, (_, AppId, AppVersion, _, MaxCost), [s(AppId, Placement, PlacementProfit, AllocatedHW)|Placements], OldHw, AllocatedHW) :-
+    ((deploymentsInfos(_, Ps, _, _), \+  member(s(AppId,_), Ps)); \+ deploymentsInfos(_, _, _, _)),
+    placement(AppId, AppVersion, MaxCost, Placement, PlacementProfit, OldHw, AllocatedHW).
+place_app(Placements, (_, AppId, AppVersion, _, MaxCost), [s(AppId, Placement, PlacementProfit, AllocatedHW)|Placements], OldHw, AllocatedHW) :-
+    deploymentsInfos(_, Ps, _, _), member(s(AppId,P), Ps), % REPLACE APP
+    newServices(AppId, AppVersion, P, NewServices), % newServices(appCR, adaptive, [on(s1, full, n1)], NewServices).
+    reasoningStep(P, AppId, OldHw, NotOkServices, [], OkPlacement, [], OkHws), % reasoningStep([on(s1, full, n1), on(s2, full, n2)], [(n1, 1), (n2, 2)], NotOkServices, [], OkPlacement).
+    append(NewServices,NotOkServices,ServicesToPlace),
+    length(ServicesToPlace, Lenght), Lenght > 0,
+    select((AppId,_), OldHw, (AppId,OkHws), UpdHw), % faccio in modo che gli arrivi un OldHw, INIZIALIZZATO, contenente solo i servizi OK
+    placementCR(ServicesToPlace, AppId, MaxCost, PlacementProfit, UpdHw, AllocatedHW, OkPlacement, Placement). % placementCR([(s1,_)],999,Placement,TotProfit,AllocatedHw,[], [(n2, 1)], [on(s2, full, n2)]).
+
+    
+%  reasoningStep([on(s1, full, n1), on(s2, full, n2)], appCR, (appCR, [(n2, 6), (n1, 4)]), NotOkServices, [], OkPlacement, [], OkHws).
+reasoningStep([on(S,V,_)|Ps], AppId, AllocHW, KOs, POk, StableP, HwOk, AllocatedHw) :-
+    \+ mel((S,V),_,_,_),
+    reasoningStep(Ps, AppId, AllocHW, KOs, POk, StableP, HwOk, AllocatedHw).
+reasoningStep([on(S,V,N)|Ps], AppId, AllocHW, KOs, POk, StableP, HwOk, AllocatedHw) :- 
+    placementOK(AppId, (S, V), N, _, AllocHW, _), !,
+    mel((S,V),_,Hw,_), 
+    reasoningStep(Ps, AppId, AllocHW, KOs, [on(S,V,N)|POk], StableP, [(N, Hw)|HwOk], AllocatedHw).
+reasoningStep([on(S,_,_)|Ps], AppId, AllocHW,[(S,_)|KOs],POk,StableP, HwOk, AllocatedHw) :-
+    reasoningStep(Ps, AppId, AllocHW,KOs,POk,StableP, HwOk, AllocatedHw).
+reasoningStep([],_,_,[],P,P,Hw,Hw). 
+
+
+% newServices(appCR, adaptive, [on(s1, full, n1)], NewServices).  NewServices = [(s2,_)]
+newServices(AppId, AppVersion, P, NewServices) :-  
+    application((AppId,AppVersion), MELsInApp),
+    findall((Mel,_), (member((Mel,_), MELsInApp), \+ member(on(Mel,_,_), P)), NewServices).
 
 targetsOk(E, CO2) :-
     ( deploymentsInfos(_, _, _, OldSustParam), member((co2, Co2Asserted), OldSustParam), member((energy, EnergyAsserted), OldSustParam); \+ deploymentsInfos(_, _, _, _), Co2Asserted is 0, EnergyAsserted is 0 ),
     target(co2, CMax), CO2 + Co2Asserted =< CMax,
     target(energy, EMax), E + EnergyAsserted =< EMax.
-
 
 carbonIntensity(N, C) :- 
     energyMix(N, Sources),
@@ -163,6 +194,7 @@ avgCI([(S, P)|Ss], OldC, NewC) :-
 avgCI([], C, C).
 
 % footprint( [(edge42, 2), (cloud42, 80)], 0, NewW, 0, NewCO2).
+% footprint([(n8, 7)], 0, E, 0, CO2)
 footprint([(N,H)|As], OldW, NewW, OldCO2, NewCO2) :-
     energyConsumption(N, EnergyXHw), TmpW is OldW + (H * EnergyXHw),
     carbonIntensity(N, C), TmpCO2 is OldCO2 + C * TmpW, 
@@ -201,21 +233,40 @@ extractPlacements((Placement, PlacementProfit, _), (Placement, PlacementProfit))
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % placement(arApp, adaptive, 110, Placement, PlacementProfit, AllocatedHW, []).
 % placement(testApp, adaptive, 999, Placement, PlacementProfit, AllocatedHW, []).
-placement(AppName, AppVersion, MaxCost, Placement, TotCost, AllocatedHW, OldHw) :-
+% placement(arApp, adaptive, 110, Placement, PlacementProfit, [(edge42, 2)], []).
+
+% placement(arApp, adaptive, 110, Placement, PlacementProfit, [], AllocatedHW).
+% placement(app1, adaptive, 110, Placement, PlacementProfit, [(arApp,[(edge42,1), (cloud42,88)])], AllocatedHW).
+placement(AppName, AppVersion, MaxCost, Placement, TotProfit, OldHw, AllocatedHW) :-
     application((AppName, AppVersion), MELs),
-    melPlacementOK(MELs, Placement, [], 0, TotCost, MaxCost, AllocatedHW, OldHw),
+    melPlacementOK(AppName, MELs, Placement, 0, TotProfit, MaxCost, OldHw, AllocatedHW),
     findall(mel2mel(M1,M2,Latency), mel2mel_in_placement(M1,M2,Latency,Placement), FlowConstraints),
     flowsOK(FlowConstraints, Placement).
+
+% placementCR(ServicesToPlace, MaxCost, Placement, PlacementProfit, AllocatedHW, OldHw, OkHws, OkPlacement),([(n1, 1), (n2, 2)]).
+% placementCR([(s1,_)],999,TotProfit, [(appCR, [(n1, 1), (n2, 2)])], AllocatedHW, [on(s2, full, n2)], Placement).
+placementCR(ServicesToPlace, AppName, MaxCost, TotProfit, OldHw, AllocatedHW, OkPlacement, Placement) :-
+    melPlacementOK(AppName, ServicesToPlace, NewPartialP, 0, TotProfit, MaxCost, OldHw, AllocatedHW),
+    append(NewPartialP, OkPlacement, Placement),
+    findall(mel2mel(M1,M2,Latency), mel2mel_in_placement(M1,M2,Latency,Placement), FlowConstraints),
+    flowsOK(FlowConstraints, Placement).
+
+% oldOkP([(n2,1)], [on(s1, full, n1), on(s2, full, n2)], [on(s1, full, n2)], Placement).
+oldOkP([], _, _, []).
+oldOkP([(N,H)|Rest], OldP, ToFixPlacement, [on(Mel, Version, N) | Placement]) :-
+    oldOkP(Rest, OldP, ToFixPlacement, Placement),
+    (member(on(Mel, _, N), OldP), \+ member(on(Mel, _, N), ToFixPlacement), mel((Mel, Version), _, H, _)).
+
 
 % evalPacements ranks a list of placements
 evalPlacements(_, _, _, [], []).
 evalPlacements(AppName, AppVersion, PreferredMelVersion, [(Placement,Cost)], [[_, VersionCompliance, Cost, Placement]]):-
-    application((AppName, AppVersion), Mels), length(Mels, NMels), 
+    application((AppName, AppVersion), NewMels), length(NewMels, NMels), 
     findall(S, member(on(S, PreferredMelVersion, _), Placement), Ls), length(Ls, NPreferredVersionMels),
     VersionCompliance is div(100*NPreferredVersionMels,NMels).
     evalPlacements(AppName, AppVersion, PreferredMelVersion, Placements, EvaluatedPlacements):-
     length(Placements, L), L>1, 
-    application((AppName, AppVersion), Mels), length(Mels, NMels),
+    application((AppName, AppVersion), NewMels), length(NewMels, NMels),
     maxANDmin(Placements, MinAllCosts, MaxAllCosts),
     findall([Formula, VersionCompliance, Cost, Placement], 
             (member((Placement, Cost), Placements), 
