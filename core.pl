@@ -10,6 +10,8 @@ melPlacementOK(AppName, [(M, Version)| Ss], [on(M, Version, N)|P], ProfitUpToNow
 
 
 % placementOK(appCR, (s2, full), n2, _, (appCR, [(n2, 6), (n1, 4)]), _).
+% placementOK(arApp, (usersData, full), cloud42, _, [(arApp, [(edge42, 2), (cloud42, 80)])], _).
+% placementOK(arApp, (movementProcessing, _), N, _, [], _).
 placementOK(AppName, (M, Version), N, NodeProfit, OldHw, NewAllocatedHW) :- 
 	mel((M, Version), SW_Reqs, HW_Reqs, Thing_Reqs),
 	node(N, SW_Caps, HW_Caps, Thing_Caps),
@@ -33,6 +35,10 @@ costIfCapsOK([Cap| CWs], Caps, TotalProfit) :-
 
 
 % hwReqsOK(appCR, 6, (5, 1), n1, _, [(appCR, [(n2, 6), (n1, 4)])], []).
+% hwReqsOK(arApp, 64, (100, 1), cloud42, _, [(arApp, [(edge42, 2), (cloud42, 16)])], _).
+% hwReqsOK(appCR, 6, (5, 1), n1, _74296, [(arApp, [(edge42, 2), (cloud42, 80)]), (appCR, [])], NewAllocatedHW).
+% hwReqsOK(testApp, 4, (6, 3), edge42, NewProfit, [(testApp, [(cloud42, 20)]), (arApp, [(edge42, 2), (cloud42, 80)])], NewAllocatedHW).
+% hwReqsOK(arApp, 64, (128, 3), node2, NewProfit, [], NewAllocatedHW).
 hwReqsOK(AppName, HWReqs, (HWCap, Profit), N, NewProfit, OldHw, NewAllocatedHW) :-
     findall(Value, (member((_, Hws), OldHw), member((N, Value), Hws)), HwsAtN),
     sum_list(HwsAtN, Sum),
@@ -60,6 +66,8 @@ mel2mel_in_placement(S1, S2, Latency, P) :-
     subset([on(S1, _, _), on(S2, _, _)], P).
 
 % Checks all latency between MELs.
+%flowsOK([mel2mel(usersData, videoStorage, 700), mel2mel(videoStorage, movementProcessing, 300), mel2mel(movementProcessing, arDriver, 200)], [on(videoStorage, full, node1), on(movementProcessing, full, node1), on(arDriver, full, node6), on(usersData, full, node8)])
+
 flowsOK([], _).
 flowsOK([mel2mel(S1,S2,_)|SFs], P) :-
     member(on(S1, _, N), P), member(on(S2, _, N), P),
