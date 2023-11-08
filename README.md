@@ -1,5 +1,3 @@
-<img src="https://github.com/di-unipi-socc/osmolog/blob/master/img/logo.png" width="300">
-
 
 
 
@@ -11,6 +9,7 @@ Details = [(vrApp, [(n4, 40), (n5, 4), (n6, 80)], 301, [(co2, 243.98000000000002
 
 Da notare che vengono rispettati i vincoli di usersData in versione full (data la dichiarazione application((arApp, adaptive), [(usersData,full), (videoStorage,_), (movementProcessing,_), (arDriver,_)]))
 Ed inoltre viene trovata una soluzione rispettando il costo massimo per il cliente cioè 116.
+
 ------------------------------------------------------------------------------------------------
 ESEMPIO 2: CONTINUOUS REASONING
 
@@ -69,7 +68,7 @@ Il reasoning step lo trova e soddisfa la richiesta e ottengo un piazzamento vali
 ------------------------------------------------------------------------------------------------
 ESEMPIO 5
 
-<img src="./co2.png" width="300">
+<img src="/img/co2.jpeg" width="300">
 
 Introduco una nuova (appCo2) che fa in modo di posizionarsi all'interno della "Danger Zone" dell Co2.
 
