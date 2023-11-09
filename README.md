@@ -1,17 +1,31 @@
 
 
 
-ESEMPIO 1: PIAZZAMENTO MULTIPLO DI APPLICAZIONI
-best(Infos, Details).
+ESEMPIO 1
+Applicazioni: arApp, vrApp
 
+Infrastruttura: infras/infra1
+
+Query: best(Infos, Details).
+
+Result:
 Infos = [417, [s(arApp, [on(usersData, full, n2), on(videoStorage, medium, n6), on(movementProcessing, full, n2), on(arDriver, light, n5)]), s(vrApp, [on(audioDriver, full, n6), on(cameraRecognition, full, n5), on(dynamicSensor, full, n6), on(..., ..., ...)])], [(n2, 72), (n6, 88), (n5, 5), (n4, 40)], [(energy, 527), (co2, 374.365)]],
 Details = [(vrApp, [(n4, 40), (n5, 4), (n6, 80)], 301, [(co2, 243.98000000000002), (energy, 292)]), (arApp, [(n5, 1), (n6, 8), (n2, 72)], 116, [(co2, 130.38500000000002), (energy, 235)])].
 
+Nota:
 Da notare che vengono rispettati i vincoli di usersData in versione full (data la dichiarazione application((arApp, adaptive), [(usersData,full), (videoStorage,_), (movementProcessing,_), (arDriver,_)]))
 Ed inoltre viene trovata una soluzione rispettando il costo massimo per il cliente cioè 116.
 
 ------------------------------------------------------------------------------------------------
-ESEMPIO 2: CONTINUOUS REASONING
+ESEMPIO 2
+
+Applicazioni: arApp, vrApp
+
+Infrastruttura: infras/infra2
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
 
 Prendendo l'esito dell'esempio 1:
 417,[s(arApp,[on(usersData,full,n2),on(videoStorage,medium,n6),on(movementProcessing,full,n2),on(arDriver,light,n5)]),s(vrApp,[on(audioDriver,full,n6),on(cameraRecognition,full,n5),on(dynamicSensor,full,n6),on(standbyDriver,full,n4)])],[(n2,72),(n6,88),(n5,5),(n4,40)],[(energy,527),(co2,374.365)]
@@ -31,13 +45,30 @@ Dalla quale possiamo anche notare che VrApp, avendo un margine maggiore di profi
 
 
 ------------------------------------------------------------------------------------------------
-ESEMPIO 3: MODIFICA PIAZZENTO GIA' ESISTENTE PER SODDISFARE NUOVA RICHIESTA
+ESEMPIO 3
+
+Applicazione: arApp
+
+Infrastruttura: infras/infra3a
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
 Faccio un primo piazzamento di arApp:
 request(arApp, adaptive, 116).
 
 Infos = [116, [s(arApp, [on(usersData, full, n2), on(videoStorage, medium, n6), on(movementProcessing, light, n6), on(arDriver, light, n3)])], [(n2, 64), (n6, 10), (n3, 1)], [(energy, 213), (co2, 121.16033333333333)]],
 Details = [(arApp, [(n3, 1), (n6, 10), (n2, 64)], 116, [(co2, 121.16033333333333), (energy, 213)])].
 
+
+
+Applicazione: arApp, vrApp
+
+Infrastruttura: infras/infra3b
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
 Piazzo vrApp e ripizazzo arApp per soddisfare entrambe le richieste:
 request(arApp, adaptive, 116). 
 request(vrApp, adaptive, 500).
@@ -47,8 +78,15 @@ Details = [(arApp, [(n5, 1), (n6, 8), (n2, 72)], 116, [(co2, 130.38500000000002)
 
 ------------------------------------------------------------------------------------------------
 ESEMPIO 4
-Con la KB originaria:
 
+Applicazione: vrApp
+
+Infrastruttura: infras/infra4a
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
+Con la KB originaria:
 request(vrApp, adaptive, 116).
 
 Infos = [301, [s(vrApp, [on(audioDriver, full, n6), on(cameraRecognition, full, n5), on(dynamicSensor, full, n6), on(standbyDriver, full, n4)])], [(n6, 80), (n5, 4), (n4, 40)], [(energy, 292), (co2, 243.98000000000002)]],
@@ -56,13 +94,41 @@ Details = [(vrApp, [(n4, 40), (n5, 4), (n6, 80)], 301, [(co2, 243.98000000000002
 
 -> usa on(audioDriver, full, n6)
 
-• Se.. commento nella KB:     % mel((audioDriver,full), [docker], 40, []). 
+
+
+
+Applicazione: vrApp
+
+Infrastruttura: infras/infra4b
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
+• Se.. tolgo nella KB:     % mel((audioDriver,full), [docker], 40, []). 
 userà correttamente:  on(audioDriver, medium, n6)
 
+
+
+Applicazione: vrApp
+
+Infrastruttura: infras/infra4c
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
 • Se.. rimuovo (audioDriver,full) da application((vrApp, adaptive), [(audioDriver,_), (cameraRecognition,_), (dynamicSensor,_), (standbyDriver,_)]).
 Ottengo un piazzamento valido
 
-• Se... aggiugo un nuovo servizio (s1,full): application((vrApp, adaptive), [(audioDriver,_), (cameraRecognition,_), (dynamicSensor,_), (standbyDriver,_), (s1,full)]).
+
+
+Applicazione: vrApp
+
+Infrastruttura: infras/infra4d
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
+• Se... aggiugo un nuovo servizio (sCo2,full): application((vrApp, adaptive), [(audioDriver,_), (cameraRecognition,_), (dynamicSensor,_), (standbyDriver,_), (sCo2,full)]).
 Il reasoning step lo trova e soddisfa la richiesta e ottengo un piazzamento valido
 
 ------------------------------------------------------------------------------------------------
@@ -70,6 +136,13 @@ ESEMPIO 5
 
 <img src="/img/co2.jpeg" width="300">
 
+Applicazione: vrApp, appCo2
+
+Infrastruttura: infras/infra5
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
 Introduco una nuova (appCo2) che fa in modo di posizionarsi all'interno della "Danger Zone" dell Co2.
 
  request(vrApp, adaptive, 500).
@@ -80,6 +153,16 @@ Il risultato di questo piazzamento è che ho raggiunto una quota di Co2 all'inte
 Infos = [936, [s(vrApp, [on(audioDriver, full, n4), on(cameraRecognition, full, n5), on(dynamicSensor, full, n6), on(standbyDriver, full, n6)]), s(appCo2, [on(sCo2, full, nCo2)])], [(n4, 40), (n5, 4), (n6, 80), (nCo2, 635)], [(energy, 927), (co2, 942.48)]],
 Details = [(appCo2, [(nCo2, 635)], 635, [(co2, 698.5), (energy, 635)]), (vrApp, [(n6, 80), (n5, 4), (n4, 40)], 301, [(co2, 243.98000000000002), (energy, 292)])].
 
+
+
+
+Applicazione: vrApp, appCo2
+
+Infrastruttura: infras/infra5
+
+Query: best(Infos, Details).
+
+Descrizione a parole:
 Un nuovo replacement delle app, fa si che vengano ridotte le guise dei mel di vrApp (in quanto appCo2 ammette un solo placement).
 Il risultato è una perfetta collocazione appena al di sotto della "danger zone". (co2, 799.062)
 

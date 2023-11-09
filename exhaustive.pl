@@ -6,7 +6,8 @@
 :- use_module(library(lists)).
 :- use_module(library(clpfd)).
 :- consult('core').
- :- ['example'].
+%:- ['example'].
+:- consult('infras/infra4d').
 
 
 
@@ -15,8 +16,8 @@
 
 % Request format: request(AppId, AppVersion, PreferredMELVersion, MaxCost). 
  
- request(arApp, adaptive, 116). 
- request(vrApp, adaptive, 500).
+% request(arApp, adaptive, 116). 
+% request(vrApp, adaptive, 500).
 % request(appCo2, adaptive, 999).
 
  
